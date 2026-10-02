@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>regpu Gaussian Splat Renderer</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #05050a;
+        overflow: hidden;
+        height: 100%;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        cursor: grab;
+      }
+      canvas:active {
+        cursor: grabbing;
+      }
+      #hint {
+        position: fixed;
+        bottom: 18px;
+        left: 50%;
+        translate: -50% 0;
+        color: #ffffff8c;
+        font: 12px system-ui, sans-serif;
+        letter-spacing: 0.04em;
+        pointer-events: none;
+        transition: opacity 1s;
+      }
+      #stats {
+        position: fixed;
+        right: 16px;
+        top: 14px;
+        color: #ffffff66;
+        font: 12px/1.4 monospace;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas></canvas>
+    <div id="hint">drag to orbit &middot; scroll or pinch to zoom</div>
+    <div id="stats"></div>
+    <script type="module" src="main.ts"></script>
+  </body>
+</html>

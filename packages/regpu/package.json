@@ -1,0 +1,31 @@
+{
+  "name": "@filonik/regpu",
+  "version": "0.0.1",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/regpu.umd.cjs",
+  "module": "./dist/regpu.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/regpu.js",
+      "require": "./dist/regpu.umd.cjs"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc --emitDeclarationOnly --outDir dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@webgpu/types": "^0.1.71",
+    "wgsl_reflect": "^1.5.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.3",
+    "typescript": "^5",
+    "vite": "^7"
+  }
+}

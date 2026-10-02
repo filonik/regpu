@@ -1,0 +1,22 @@
+{
+  "name": "@filonik/regpu-examples",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@filonik/regpu": "*",
+    "angle-normals": "^1.0.0",
+    "bunny": "^1.0.1",
+    "conway-hart": "^0.1.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@webgpu/types": "^0.1.71",
+    "monaco-editor": "^0.52.2",
+    "vite": "^7"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w packages/regpu-examples",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "dependencies": {
+    "wgpu-matrix": "^3.4.2",
+    "wgsl_reflect": "^1.5.0"
+  }
+}
