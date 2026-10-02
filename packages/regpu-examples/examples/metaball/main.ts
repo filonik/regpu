@@ -1,6 +1,6 @@
 // This example is based on: https://github.com/mikolalysenko/regl/blob/gh-pages/example/metaball.js
 
-import { createREGPU, loadImageBitmap } from '@filonik/regpu'
+import { createREGPU, loadImageBitmaps } from '@filonik/regpu'
 import { mat4 } from 'wgpu-matrix'
 
 import backgroundWGSL from './background.wgsl?raw'
@@ -8,6 +8,9 @@ import generateWGSL from './metaball.wgsl?raw'
 import renderWGSL from './render.wgsl?raw'
 
 import createCamera from './camera'
+
+const getTextureUrl = (name: string) => new URL(`./textures/${name}`, import.meta.url).href
+const loadTextures = (names: string[]) => loadImageBitmaps(names.map(getTextureUrl))
 
 const RESOLUTION = 48
 const CELL_COUNT = RESOLUTION ** 3
@@ -30,12 +33,12 @@ const generateSurface = regpu.compute<{ values: ArrayLike<number> }>({
   buffers: { vertices, drawArgs }
 })
 
-const environment = regpu.texture({
-  data: await loadImageBitmap('/textures/spheretexture.jpg')
-})
-const normalMap = regpu.texture({
-  data: await loadImageBitmap('/textures/normaltexture.jpg')
-})
+const [environmentImage, normalMapImage] = await loadTextures([
+  'spheretexture.jpg',
+  'normaltexture.jpg'
+])
+const environment = regpu.texture({ data: environmentImage })
+const normalMap = regpu.texture({ data: normalMapImage })
 const environmentSampler = regpu.sampler({ magFilter: 'linear', minFilter: 'linear' })
 const normalSampler = regpu.sampler({
   magFilter: 'linear',

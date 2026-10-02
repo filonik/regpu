@@ -6,10 +6,13 @@ import { mat4 } from 'wgpu-matrix'
 
 import { cube } from './cube'
 
+const getTextureUrl = (name: string) => new URL(`./textures/${name}`, import.meta.url).href
+const loadTexture = (name: string) => loadImageBitmap(getTextureUrl(name))
+
 const regpu = await createREGPU('canvas')
 
 const cubeTexture = regpu.texture({
-  data: await loadImageBitmap('/Di-3d.png')
+  data: await loadTexture('Di-3d.png')
 })
 
 const cubeTextureSampler = regpu.sampler({

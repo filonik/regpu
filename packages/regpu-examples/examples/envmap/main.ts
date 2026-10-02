@@ -10,18 +10,14 @@ import envmapCode from './envmap.wgsl?raw'
 import angleNormals from 'angle-normals'
 import bunny from 'bunny'
 
+const getTextureUrl = (name: string) => new URL(`./textures/${name}`, import.meta.url).href
+const loadTextures = (names: string[]) => loadImageBitmaps(names.map(getTextureUrl))
+
 const canvas = document.querySelector('canvas')!
 
 const regpu = await createREGPU(canvas)
 const cubemap = regpu.texture({
-  data: await loadImageBitmaps([
-    '/posx.jpg',
-    '/negx.jpg',
-    '/posy.jpg',
-    '/negy.jpg',
-    '/posz.jpg',
-    '/negz.jpg'
-  ]),
+  data: await loadTextures(['posx.jpg', 'negx.jpg', 'posy.jpg', 'negy.jpg', 'posz.jpg', 'negz.jpg']),
   view: { dimension: 'cube' }
 })
 const sampler = regpu.sampler({ magFilter: 'linear', minFilter: 'linear' })

@@ -1,13 +1,16 @@
 // This example is based on: https://github.com/tcoppex/webgpu-marchingcubes
 // Copyright 2024 Thibault Coppex and distributed under the MIT License.
 
-import { createREGPU, loadImageBitmap } from '@filonik/regpu'
+import { createREGPU, loadImageBitmaps } from '@filonik/regpu'
 import { mat4 } from 'wgpu-matrix'
 
 import generateWGSL from './marching-cubes.wgsl?raw'
 import renderWGSL from './render.wgsl?raw'
 
 import createCamera from './camera'
+
+const getTextureUrl = (name: string) => new URL(`./textures/${name}`, import.meta.url).href
+const loadTextures = (names: string[]) => loadImageBitmaps(names.map(getTextureUrl))
 
 const RESOLUTION = 28
 const CELL_COUNT = RESOLUTION ** 3
@@ -17,16 +20,14 @@ const WORKGROUP_SIZE = 64
 const canvas = document.querySelector('canvas')!
 const regpu = await createREGPU(canvas)
 const [groundImage, mudImage, rockImage, groundNormalImage, mudNormalImage, rockNormalImage] =
-  await Promise.all(
-    [
-      'coast_sand_rocks_02_diff_1k.jpg',
-      'mud_cracked_dry_03_diff_1k.jpg',
-      'rock_face_03_diff_1k.jpg',
-      'coast_sand_rocks_02_nor_gl_1k.png',
-      'mud_cracked_dry_03_nor_gl_1k.png',
-      'rock_face_03_nor_gl_1k.png'
-    ].map((name) => loadImageBitmap(`/textures/${name}`))
-  )
+  await loadTextures([
+    'coast_sand_rocks_02_diff_1k.jpg',
+    'mud_cracked_dry_03_diff_1k.jpg',
+    'rock_face_03_diff_1k.jpg',
+    'coast_sand_rocks_02_nor_gl_1k.png',
+    'mud_cracked_dry_03_nor_gl_1k.png',
+    'rock_face_03_nor_gl_1k.png'
+  ])
 const ground = regpu.texture({ data: groundImage, format: 'rgba8unorm-srgb' })
 const mud = regpu.texture({ data: mudImage, format: 'rgba8unorm-srgb' })
 const rock = regpu.texture({ data: rockImage, format: 'rgba8unorm-srgb' })
