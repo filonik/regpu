@@ -351,6 +351,7 @@ a {
 
 .content {
   display: grid;
+  min-width: 0;
   min-height: 0;
   flex: 1;
   grid-template-rows: minmax(260px, 54%) minmax(220px, 46%);
@@ -358,6 +359,7 @@ a {
   background: var(--border);
 }
 .panel {
+  min-width: 0;
   min-height: 0;
   background: var(--surface);
 }
@@ -441,9 +443,10 @@ a {
 .source-tabs {
   display: flex;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 0;
   align-self: stretch;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 .source-tabs::-webkit-scrollbar {
