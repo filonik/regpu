@@ -51,7 +51,9 @@ const renderPass = regpu.render.pass({})
 
 const withSolidPipeline = regpu.render({
   pipeline: {
-    module: helloMeshCode,
+    module: helloMeshCode
+    // Optional (layout automatically inferred)
+    /*
     attributes: {
       position: 'vec3f',
       texCoord: 'vec2f'
@@ -85,6 +87,7 @@ const withSolidPipeline = regpu.render({
         binding: 1
       }
     }
+    */
   }
 })
 
@@ -123,6 +126,7 @@ const view = mat4.create()
 const model0 = mat4.create()
 const model1 = mat4.create()
 
+// prettier-ignore
 regpu.frame(({ canvas, time }) => {
   mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.01, 100, projection)
   mat4.lookAt([2, 2, 2], [0, 0, 0], [0, 1, 0], view)
@@ -139,38 +143,27 @@ regpu.frame(({ canvas, time }) => {
 
   renderPass(() => {
     withSolidPipeline(() => {
-      withCamera(
-        {
-          projection,
-          view
-        },
-        () => {
-          withMaterial(
-            {
-              baseColor: texture,
-              baseColorSampler: sampler
-            },
-            () => {
-              withModel(
-                {
-                  transform: model0
-                },
-                () => {
-                  drawMesh()
-                }
-              )
-              withModel(
-                {
-                  transform: model1
-                },
-                () => {
-                  drawMesh()
-                }
-              )
-            }
-          )
-        }
-      )
+      withCamera({
+        projection,
+        view
+      }, () => {
+        withMaterial({
+          baseColor: texture,
+          baseColorSampler: sampler
+        }, () => {
+          withModel({
+            transform: model0
+          }, () => {
+            drawMesh()
+          })
+
+          withModel({
+            transform: model1
+          }, () => {
+            drawMesh()
+          })
+        })
+      })
     })
   })
 })
