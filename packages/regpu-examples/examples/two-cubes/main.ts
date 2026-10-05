@@ -43,9 +43,7 @@ const texture = regpu.texture({
   ]
 })
 
-const sampler = regpu.sampler({
-  // TODO
-})
+const sampler = regpu.sampler({})
 
 const renderPass = regpu.render.pass({})
 
@@ -156,7 +154,6 @@ regpu.frame(({ canvas, time }) => {
           }, () => {
             drawMesh()
           })
-
           withModel({
             transform: model1
           }, () => {
