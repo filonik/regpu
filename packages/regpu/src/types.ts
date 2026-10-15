@@ -50,14 +50,25 @@ export type Context = {
 
 export type FrameCallback = (context: Context) => void
 
+export interface FrameSource {
+  request(callback: FrameRequestCallback): number
+  cancel(handle: number): void
+}
+
+/** A canvas, a selector matching canvases, or a fixed collection of canvases. */
+export type CanvasArg = HTMLCanvasElement | string | Iterable<HTMLCanvasElement>
+
 export type InitializationOptions = {
-  canvas?: HTMLCanvasElement
+  canvas?: CanvasArg
   container?: HTMLElement
   alphaMode?: GPUCanvasAlphaMode
   format?: GPUTextureFormat
+  /** Request an adapter compatible with the experimental WebXR/WebGPU binding. */
+  xrCompatible?: boolean
 }
 
-export type InitializationArg = string | HTMLElement | InitializationOptions
+export type InitializationArg =
+  string | HTMLElement | Iterable<HTMLCanvasElement> | InitializationOptions
 
 interface Resource {
   destroy(): void
@@ -226,23 +237,22 @@ export type PipelineBufferLayout = Record<
   }
 >
 
+export type ColorAttachment = { view: GPUTextureView } & Partial<GPURenderPassColorAttachment>
+export type DepthStencilAttachment = {
+  view: GPUTextureView
+} & Partial<GPURenderPassDepthStencilAttachment>
+
 export type RenderPassProps = {
+  /** Pixel viewport; depth uses WebGPU's default [0, 1] range. */
+  viewport?: { x: number; y: number; width: number; height: number }
   clear?: {
     color?: GPUColor
     depth?: number
+    stencil?: number
   }
-  colorAttachments?: Array<
-    | Texture
-    | {
-        /** A pre-created texture view to use directly as the attachment. */
-        view: GPUTextureView
-        clear?: GPUColor
-        loadOp?: GPULoadOp
-        storeOp?: GPUStoreOp
-      }
-  >
+  colorAttachments?: Array<Texture | ColorAttachment>
   /** Overrides the automatically managed canvas depth texture. */
-  depthAttachment?: Texture | null
+  depthAttachment?: Texture | DepthStencilAttachment | null
 }
 
 export type ComputePassProps = {}
@@ -293,5 +303,12 @@ export interface ReGpu {
   texture(arg: Texture | TextureArg): Texture
   module(arg: ShaderModule | ShaderModuleArg): ShaderModule
 
-  frame(cb: FrameCallback): void
+  /** Record and submit commands synchronously, without waiting for GPU completion. */
+  submit(cb: FrameCallback): void
+  /** Register work in a shared loop. Callbacks using the same source share one submission. */
+  frame(cb: FrameCallback, source?: FrameSource): () => void
+  /** Select each canvas as the current target without scheduling or submitting work. */
+  perCanvas(cb: FrameCallback): void
+  /** Render each initialized canvas once per animation tick, sharing time, delta, and submission. */
+  canvasFrame(cb: FrameCallback): () => void
 }

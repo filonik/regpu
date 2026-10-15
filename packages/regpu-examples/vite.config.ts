@@ -9,6 +9,8 @@ export default defineConfig({
         main: resolve(import.meta.dirname, 'index.html'),
         helloTriangle: resolve(import.meta.dirname, 'examples/hello-triangle/index.html'),
         helloCube: resolve(import.meta.dirname, 'examples/hello-cube/index.html'),
+        multipleCanvases: resolve(import.meta.dirname, 'examples/multiple-canvases/index.html'),
+        helloCubeXR: resolve(import.meta.dirname, 'examples/hello-cube-xr/index.html'),
         twoCubes: resolve(import.meta.dirname, 'examples/two-cubes/index.html'),
         instancedCube: resolve(import.meta.dirname, 'examples/instanced-cube/index.html'),
         instancedMesh: resolve(import.meta.dirname, 'examples/instanced-mesh/index.html'),
@@ -28,7 +30,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@filonik/regpu': resolve(__dirname, '../regpu/src/index.ts')
+      '@filonik/regpu': resolve(__dirname, '../regpu/src/index.ts'),
+      '@filonik/regpu-xr': resolve(__dirname, '../regpu-xr/src/index.ts')
     }
   }
 })

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "@webgpu/types",
+      "webxr"
+    ]
+  },
+  "include": [
+    "src"
+  ]
+}

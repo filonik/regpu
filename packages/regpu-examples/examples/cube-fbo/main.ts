@@ -155,18 +155,20 @@ regpu.frame(({ time, delta }) => {
     drawTeapot({ uniforms: { camera, object: objectUniforms(teapotPosition, teapotTint) } })
   })
 
-  const sceneCamera = {
-    projection: mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.25, 1000),
-    view: orbitCamera.view(),
-    eye: orbitCamera.eye()
-  }
-  renderPass(() => {
-    drawGround({ camera: sceneCamera })
-    drawTeapot({
-      uniforms: { camera: sceneCamera, object: objectUniforms(teapotPosition, teapotTint) }
-    })
-    drawBunny({
-      uniforms: { camera: sceneCamera, object: objectUniforms(bunnyPosition, bunnyTint) }
+  regpu.perCanvas(({ canvas }) => {
+    const sceneCamera = {
+      projection: mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.25, 1000),
+      view: orbitCamera.view(),
+      eye: orbitCamera.eye()
+    }
+    renderPass(() => {
+      drawGround({ camera: sceneCamera })
+      drawTeapot({
+        uniforms: { camera: sceneCamera, object: objectUniforms(teapotPosition, teapotTint) }
+      })
+      drawBunny({
+        uniforms: { camera: sceneCamera, object: objectUniforms(bunnyPosition, bunnyTint) }
+      })
     })
   })
 })

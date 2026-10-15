@@ -17,7 +17,14 @@ const canvas = document.querySelector('canvas')!
 
 const regpu = await createREGPU(canvas)
 const cubemap = regpu.texture({
-  data: await loadTextures(['posx.jpg', 'negx.jpg', 'posy.jpg', 'negy.jpg', 'posz.jpg', 'negz.jpg']),
+  data: await loadTextures([
+    'posx.jpg',
+    'negx.jpg',
+    'posy.jpg',
+    'negy.jpg',
+    'posz.jpg',
+    'negz.jpg'
+  ]),
   view: { dimension: 'cube' }
 })
 const sampler = regpu.sampler({ magFilter: 'linear', minFilter: 'linear' })
@@ -31,6 +38,7 @@ const renderPass = regpu.render.pass({})
 const view = mat4.create()
 const inverseView = mat4.create()
 const projection = mat4.create()
+const inverseProjection = mat4.create()
 
 const camera = createCamera(canvas, {
   azimuth: Math.PI / 2,
@@ -58,7 +66,7 @@ const drawBackground = regpu.render({
       [8, 0]
     ]
   },
-  uniforms: () => ({ camera: { view } }),
+  uniforms: () => ({ camera: { inverseProjection, inverseView } }),
   count: 3
 })
 
@@ -72,16 +80,18 @@ const drawBunny = regpu.render({
   uniforms: () => ({ camera: { projection, view, inverseView } })
 })
 
-regpu.frame(({ canvas, delta }) => {
+regpu.frame(({ delta }) => {
   camera.tick(delta)
   camera.view(view)
   mat4.inverse(view, inverseView)
-  mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.01, 1000, projection)
-
-  renderPass(() => {
-    withEnvironment(() => {
-      drawBackground()
-      drawBunny()
+  regpu.perCanvas(({ canvas }) => {
+    mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.01, 1000, projection)
+    mat4.inverse(projection, inverseProjection)
+    renderPass(() => {
+      withEnvironment(() => {
+        drawBackground()
+        drawBunny()
+      })
     })
   })
 })

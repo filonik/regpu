@@ -1,0 +1,113 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 11px;
+  font-synthesis: none;
+  color: light-dark(#1f2933, #dce3eb);
+  background: light-dark(#f5f6f8, #11151c);
+  --border: light-dark(#e1e5e9, #303846);
+  --muted: light-dark(#6d7782, #9da8b5);
+  --accent: light-dark(#6657d9, #9b8cff);
+  --surface: light-dark(#fff, #181d26);
+  --preview-size: 210px;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input {
+  font: inherit;
+}
+input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+input[type='range'] {
+  width: 140px;
+}
+button {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: inherit;
+  background: var(--surface);
+  cursor: pointer;
+}
+button:hover {
+  background: light-dark(#f1f2f4, #272e3a);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.status-bar,
+.controls,
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.status-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex-wrap: wrap;
+  padding: 12px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.controls {
+  flex-wrap: wrap;
+}
+.controls label {
+  gap: 6px;
+}
+.counts {
+  margin-left: auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+#gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--preview-size)), 1fr));
+  align-items: start;
+  gap: 18px;
+  padding: 28px;
+}
+.preview {
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.preview canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: var(--aspect);
+  background: var(--background);
+}
+.preview figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+  border-top: 1px solid var(--border);
+}
+.preview figcaption span {
+  color: var(--muted);
+  font-size: 10px;
+}
+@media (max-width: 560px) {
+  .status-bar {
+    padding-inline: 16px;
+  }
+  #gallery {
+    padding: 16px;
+    gap: 12px;
+  }
+}

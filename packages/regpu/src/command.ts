@@ -67,7 +67,7 @@ export function createREGPUCommands(
   pipelines: ReturnType<typeof createREGPUPipelines>,
   getDepthTexture: () => GPUTexture | undefined
 ) {
-  const { device, context: canvasContext } = context
+  const { device } = context
   const { module, renderPipeline, computePipeline } = pipelines
   const buffers = createREGPUBuffers(context)
   const { command, resolve } = createCommandScopes(context)
@@ -108,37 +108,65 @@ export function createREGPUCommands(
 
   function renderPass<P extends object>(state: REGPU.CommandState<P>): REGPU.Scope<P> {
     return scope(state, (resolved, body) => {
-      const depthTexture =
-        resolved.depthAttachment === null
-          ? undefined
-          : (resolved.depthAttachment?._gpu ?? getDepthTexture())
-      const colorAttachments = resolved.colorAttachments?.map((attachment) => {
-        const descriptor = '_gpu' in attachment ? { view: attachment.view() } : attachment
+      const toColorAttachment: (
+        value: REGPU.Texture | REGPU.ColorAttachment
+      ) => GPURenderPassColorAttachment = (value) => {
+        const attachment = '_gpu' in value ? { view: value.view() } : value
         return {
-          view: descriptor.view,
-          clearValue: descriptor.clear ?? resolved.clear?.color ?? { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: descriptor.loadOp ?? ('clear' as const),
-          storeOp: descriptor.storeOp ?? ('store' as const)
+          view: attachment.view,
+          clearValue: attachment.clearValue ?? resolved.clear?.color ?? { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: attachment.loadOp ?? ('clear' as const),
+          storeOp: attachment.storeOp ?? ('store' as const)
         }
-      })
+      }
+      const toColorAttachments: (
+        values: (REGPU.Texture | REGPU.ColorAttachment)[]
+      ) => GPURenderPassColorAttachment[] = (values) => values.map(toColorAttachment)
+      const toDepthStencilAttachment: (
+        value: REGPU.Texture | REGPU.DepthStencilAttachment | null
+      ) => GPURenderPassDepthStencilAttachment | undefined = (value) => {
+        if (value === null) return undefined
+        const attachment = '_gpu' in value ? { view: value.view() } : value
+        return {
+          view: attachment.view,
+          depthClearValue: attachment.depthClearValue ?? resolved.clear?.depth ?? 1,
+          depthLoadOp: attachment.depthLoadOp ?? ('clear' as const),
+          depthStoreOp: attachment.depthStoreOp ?? ('store' as const),
+          stencilClearValue: attachment.stencilClearValue ?? resolved.clear?.stencil,
+          stencilLoadOp: attachment.stencilLoadOp,
+          stencilStoreOp: attachment.stencilStoreOp
+        }
+      }
+      const defaultColorAttachments: () => GPURenderPassColorAttachment[] = () => {
+        const texture = context.context.getCurrentTexture()
+        return [toColorAttachment({ view: texture.createView() })]
+      }
+      const defaultDepthStencilAttachment: () =>
+        GPURenderPassDepthStencilAttachment | undefined = () => {
+        const texture = getDepthTexture()
+        return texture ? toDepthStencilAttachment({ view: texture.createView() }) : undefined
+      }
+
+      const colorAttachments =
+        resolved.colorAttachments === undefined
+          ? defaultColorAttachments()
+          : toColorAttachments(resolved.colorAttachments)
+
+      const depthStencilAttachment =
+        resolved.depthAttachment === undefined
+          ? defaultDepthStencilAttachment()
+          : toDepthStencilAttachment(resolved.depthAttachment)
+
       const pass = encoder!.beginRenderPass({
-        colorAttachments: colorAttachments ?? [
-          {
-            view: canvasContext.getCurrentTexture().createView(),
-            clearValue: resolved.clear?.color ?? { r: 0, g: 0, b: 0, a: 1 },
-            loadOp: 'clear',
-            storeOp: 'store'
-          }
-        ],
-        depthStencilAttachment: depthTexture && {
-          view: resolved.depthAttachment?.view() ?? depthTexture.createView(),
-          depthClearValue: resolved.clear?.depth ?? 1,
-          depthLoadOp: 'clear',
-          depthStoreOp: 'store'
-        }
+        colorAttachments,
+        depthStencilAttachment
       })
       activeRenderPass = pass
       try {
+        if (resolved.viewport) {
+          const { x, y, width, height } = resolved.viewport
+          pass.setViewport(x, y, width, height, 0, 1)
+        }
         body()
       } finally {
         pass.end()
@@ -227,32 +255,84 @@ export function createREGPUCommands(
     })
   }
 
-  function frame(callback: REGPU.FrameCallback) {
-    let previousTime: number | undefined
-
-    function loop(ms: number) {
-      context.time = ms * 0.001
-      context.delta = previousTime === undefined ? 0 : context.time - previousTime
-      previousTime = context.time
-      encoder = device.createCommandEncoder()
-      try {
-        callback(context)
-        device.queue.submit([encoder.finish()])
-      } finally {
-        encoder = undefined
-        // Buffers referenced by submitted work may be destroyed after submission.
-        // Unlike static vertex/index resources, uniform uploads live for one frame.
-        transientBuffers.splice(0).forEach((buffer) => buffer.destroy())
-      }
-      requestAnimationFrame(loop)
+  function submit(callback: REGPU.FrameCallback) {
+    if (encoder) throw new Error('submit cannot be nested inside submit or a frame callback')
+    encoder = device.createCommandEncoder()
+    try {
+      callback(context)
+      device.queue.submit([encoder.finish()])
+    } finally {
+      encoder = undefined
+      // Buffers referenced by submitted work may be destroyed after submission.
+      transientBuffers.splice(0).forEach((buffer) => buffer.destroy())
     }
-    requestAnimationFrame(loop)
+  }
+
+  const windowSource: REGPU.FrameSource = {
+    request: (callback) => requestAnimationFrame(callback),
+    cancel: (handle) => cancelAnimationFrame(handle)
+  }
+  type Registration = { callback: REGPU.FrameCallback }
+  type Loop = {
+    callbacks: Set<Registration>
+    handle?: number
+    previousTime?: number
+    running: boolean
+  }
+  const loops = new Map<REGPU.FrameSource, Loop>()
+
+  function frame(callback: REGPU.FrameCallback, source = windowSource) {
+    let loop = loops.get(source)
+    if (!loop) {
+      loop = { callbacks: new Set(), running: false }
+      loops.set(source, loop)
+    }
+    const current = loop
+    const registration = { callback }
+    current.callbacks.add(registration)
+
+    function tick(ms: number) {
+      current.handle = undefined
+      if (!current.callbacks.size) return
+      current.running = true
+      context.time = ms * 0.001
+      context.delta = current.previousTime === undefined ? 0 : context.time - current.previousTime
+      current.previousTime = context.time
+      // Additions start next tick; disposal before a callback's turn skips it.
+      const callbacks = [...current.callbacks]
+      try {
+        submit(() => {
+          for (const entry of callbacks) {
+            if (current.callbacks.has(entry)) entry.callback(context)
+          }
+        })
+      } catch (error) {
+        current.callbacks.clear()
+        throw error
+      } finally {
+        current.running = false
+        if (current.callbacks.size) current.handle = source.request(tick)
+        else loops.delete(source)
+      }
+    }
+
+    if (current.handle === undefined && !current.running) current.handle = source.request(tick)
+    return () => {
+      current.callbacks.delete(registration)
+      if (!current.callbacks.size && !current.running) {
+        if (current.handle !== undefined) source.cancel(current.handle)
+        current.handle = undefined
+        // An old disposer must not remove a later loop using the same source.
+        if (loops.get(source) === current) loops.delete(source)
+      }
+    }
   }
 
   return {
     module,
     compute: Object.assign(computeCommand, { pipeline: computePipeline, pass: computePass }),
     render: Object.assign(renderCommand, { pipeline: renderPipeline, pass: renderPass }),
+    submit,
     frame
   }
 }

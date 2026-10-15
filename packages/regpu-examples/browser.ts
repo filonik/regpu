@@ -11,7 +11,7 @@ type Example = {
   slug: string
   title: string
   description: string
-  group: 'Basics' | 'Rendering' | 'Compute'
+  group: 'Basics' | 'Rendering' | 'Compute' | 'XR'
 }
 
 const examples: Example[] = [
@@ -50,6 +50,12 @@ const examples: Example[] = [
     title: 'Instanced Mesh',
     description: 'Render an instanced geometry mesh.',
     group: 'Basics'
+  },
+  {
+    slug: 'multiple-canvases',
+    title: 'Multiple Canvases',
+    description: 'Animate 200 canvases on one device, drawing only visible previews.',
+    group: 'Rendering'
   },
   {
     slug: 'envmap',
@@ -104,6 +110,12 @@ const examples: Example[] = [
     title: 'Marching Cubes',
     description: 'Generate and render an animated isosurface on the GPU.',
     group: 'Compute'
+  },
+  {
+    slug: 'hello-cube-xr',
+    title: 'Hello Cube XR',
+    description: 'Render a rotating cube in WebXR with a canvas fallback.',
+    group: 'XR'
   }
 ]
 
@@ -223,7 +235,7 @@ function renderList(query = '') {
     return
   }
 
-  for (const group of ['Basics', 'Rendering', 'Compute'] as const) {
+  for (const group of ['Basics', 'Rendering', 'Compute', 'XR'] as const) {
     const groupExamples = matches.filter((example) => example.group === group)
     if (!groupExamples.length) continue
     const heading = document.createElement('div')

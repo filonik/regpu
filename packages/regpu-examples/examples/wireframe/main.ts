@@ -87,7 +87,7 @@ const viewProjection = mat4.create()
 const world = mat4.create()
 const worldViewProjection = mat4.create()
 
-regpu.frame(({ canvas, time }) => {
+regpu.canvasFrame(({ canvas, time }) => {
   const projection = mat4.perspective((60 * Math.PI) / 180, canvas.width / canvas.height, 0.1, 1000)
   const view = mat4.lookAt([-300, 0, 300], [0, 0, 0], [0, 1, 0])
   mat4.multiply(projection, view, viewProjection)

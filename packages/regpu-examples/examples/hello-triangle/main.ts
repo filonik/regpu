@@ -8,7 +8,7 @@ const renderPass = regpu.render.pass({})
 const withSolidPipeline = regpu.render({ pipeline: helloTriangleCode })
 const drawTriangle = regpu.render({ count: 3 })
 
-regpu.frame(() => {
+regpu.canvasFrame(() => {
   renderPass(() => {
     withSolidPipeline(() => {
       drawTriangle()

@@ -4,139 +4,47 @@ import { createREGPUTextures } from './texture'
 import { createREGPUBuffers } from './buffer'
 import { createREGPUPipelines } from './pipeline'
 import { createREGPUCommands } from './command'
+import { resolveCanvases, createCanvasTargets } from './canvas'
 
-function isHTMLElement(arg: REGPU.InitializationArg): arg is HTMLElement {
-  return (
-    typeof arg === 'object' &&
-    arg !== null &&
-    'nodeName' in arg &&
-    'appendChild' in arg &&
-    'getBoundingClientRect' in arg &&
-    typeof arg.nodeName === 'string' &&
-    typeof arg.appendChild === 'function' &&
-    typeof arg.getBoundingClientRect === 'function'
-  )
+function toRequestAdapterOptions(
+  options: REGPU.InitializationOptions
+): GPURequestAdapterOptions | undefined {
+  // xrCompatible is experimental and absent from some WebGPU declarations.
+  return options.xrCompatible !== undefined
+    ? ({ xrCompatible: options.xrCompatible } as GPURequestAdapterOptions)
+    : undefined
 }
 
-function isHTMLCanvasElement(element: HTMLElement): element is HTMLCanvasElement {
-  return element.nodeName.toLowerCase() === 'canvas'
-}
-
-function normalizeInitializationOptions(arg: REGPU.InitializationArg): REGPU.InitializationOptions {
-  let element: HTMLElement | undefined
-  let canvas: HTMLCanvasElement | undefined
-  let container: HTMLElement | undefined
-  let alphaMode: GPUCanvasAlphaMode | undefined
-  let format: GPUTextureFormat | undefined
-  if (typeof arg === 'string') {
-    element = document.querySelector<HTMLElement>(arg) ?? undefined
-  } else {
-    if (isHTMLElement(arg)) {
-      element = arg
-    } else {
-      if ('canvas' in arg) {
-        canvas = arg.canvas
-      } else if ('container' in arg) {
-        container = arg.container
-      }
-      alphaMode = arg.alphaMode
-      format = arg.format
-    }
-  }
-
-  if (element) {
-    if (isHTMLCanvasElement(element)) {
-      canvas = element
-    } else {
-      container = element
-    }
-  }
-
-  return {
-    canvas,
-    container,
-    alphaMode,
-    format
-  }
-}
-
-function resolveCanvas(arg: REGPU.InitializationOptions) {
-  if (arg.canvas) return arg.canvas
-
-  const canvas = document.createElement('canvas')
-  const container = arg.container ?? document.body
-
-  canvas.style.width = '100%'
-  canvas.style.height = '100%'
-
-  container.appendChild(canvas)
-
-  return canvas
+function toDeviceDescriptor(options: REGPU.InitializationOptions): GPUDeviceDescriptor | undefined {
+  // TODO
+  return undefined
 }
 
 export async function createCanvasContext(arg: REGPU.InitializationArg) {
   if (!navigator.gpu) throw new Error('WebGPU unsupported')
 
-  const options = normalizeInitializationOptions(arg)
+  const { options, canvases } = resolveCanvases(arg)
 
-  if (!options) throw new Error('Invalid options')
-
-  const canvas = resolveCanvas(options)
-
-  if (!canvas) throw new Error('Invalid canvas')
-
-  const adapter = await navigator.gpu.requestAdapter()
+  const adapter = await navigator.gpu.requestAdapter(toRequestAdapterOptions(options))
 
   if (!adapter) throw new Error('Invalid adapter')
 
-  const device = await adapter.requestDevice()
-
-  const canvasContext = canvas.getContext('webgpu')
-
-  if (!canvasContext) throw new Error('Invalid context')
+  const device = await adapter.requestDevice(toDeviceDescriptor(options))
 
   const format = options.format ?? navigator.gpu.getPreferredCanvasFormat()
-
-  const alphaMode = options.alphaMode ?? 'opaque'
-
+  const targets = createCanvasTargets(device, canvases, format, options.alphaMode ?? 'opaque')
+  const primary = targets[0]
   const context: REGPU.Context = {
-    canvas,
+    canvas: primary.canvas,
     device,
-    context: canvasContext,
+    context: primary.context,
     format,
     time: 0,
     delta: 0
   }
-
-  let depthTexture: GPUTexture | undefined
-
-  function resize() {
-    if (!canvasContext) return
-
-    const dpr = globalThis.devicePixelRatio || 1
-
-    canvas.width = Math.max(1, Math.floor(canvas.clientWidth * dpr))
-    canvas.height = Math.max(1, Math.floor(canvas.clientHeight * dpr))
-
-    depthTexture?.destroy()
-    depthTexture = device.createTexture({
-      size: [canvas.width, canvas.height],
-      format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT
-    })
-
-    canvasContext.configure({
-      device,
-      format,
-      alphaMode
-    })
-  }
-
-  resize()
-
-  addEventListener('resize', resize)
-
-  return { context, format, getDepthTexture: () => depthTexture }
+  const byCanvas = new Map(targets.map((target) => [target.canvas, target]))
+  const getDepthTexture = () => byCanvas.get(context.canvas)?.getDepthTexture()
+  return { context, targets, format, getDepthTexture }
 }
 
 export async function loadImageBitmap(url: string): Promise<ImageBitmap> {
@@ -156,17 +64,52 @@ export async function loadImageBitmaps(urls: string[]): Promise<ImageBitmap[]> {
 export async function createREGPU(selector: string): Promise<REGPU.ReGpu>
 export async function createREGPU(canvas: HTMLCanvasElement): Promise<REGPU.ReGpu>
 export async function createREGPU(container: HTMLElement): Promise<REGPU.ReGpu>
+export async function createREGPU(canvases: Iterable<HTMLCanvasElement>): Promise<REGPU.ReGpu>
 export async function createREGPU(options: REGPU.InitializationOptions): Promise<REGPU.ReGpu>
 export async function createREGPU(arg: REGPU.InitializationArg): Promise<REGPU.ReGpu> {
-  const { context, getDepthTexture } = await createCanvasContext(arg)
+  const { context, targets, getDepthTexture } = await createCanvasContext(arg)
   const buffers = createREGPUBuffers(context)
   const textures = createREGPUTextures(context)
   const pipelines = createREGPUPipelines(context)
   const commands = createREGPUCommands(context, pipelines, getDepthTexture)
+  function perCanvas(callback: REGPU.FrameCallback) {
+    const { canvas, context: canvasContext, time, delta } = context
+    try {
+      for (const target of targets) {
+        context.canvas = target.canvas
+        context.context = target.context
+        context.time = time
+        context.delta = delta
+        callback(context)
+      }
+    } finally {
+      context.canvas = canvas
+      context.context = canvasContext
+      context.time = time
+      context.delta = delta
+    }
+  }
 
-  return {
+  function canvasFrame(callback: REGPU.FrameCallback) {
+    let stopped = false
+    const stop = commands.frame(() => {
+      perCanvas((context) => {
+        if (!stopped) callback(context)
+      })
+    })
+    return () => {
+      stopped = true
+      stop()
+    }
+  }
+
+  const result = {
+    _context: context,
     ...buffers,
     ...textures,
-    ...commands
+    ...commands,
+    perCanvas,
+    canvasFrame
   }
+  return result
 }

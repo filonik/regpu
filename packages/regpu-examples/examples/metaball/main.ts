@@ -88,15 +88,22 @@ regpu.frame(({ device, time, delta }) => {
     generateSurface({ values: [time * 0.5, RESOLUTION, MAX_VERTICES, 0] })
   })
 
-  const projection = mat4.perspective((45 * Math.PI) / 180, canvas.width / canvas.height, 0.01, 10)
-  renderPass(() => {
-    drawBackground({ values: [canvas.width, canvas.height, 0.05, 0] })
-    drawSurface({
-      scene: {
-        projection,
-        view: camera.view(),
-        color: [36 / 255, 70 / 255, 106 / 255, 1]
-      }
+  regpu.perCanvas(({ canvas }) => {
+    const projection = mat4.perspective(
+      (45 * Math.PI) / 180,
+      canvas.width / canvas.height,
+      0.01,
+      10
+    )
+    renderPass(() => {
+      drawBackground({ values: [canvas.width, canvas.height, 0.05, 0] })
+      drawSurface({
+        scene: {
+          projection,
+          view: camera.view(),
+          color: [36 / 255, 70 / 255, 106 / 255, 1]
+        }
+      })
     })
   })
 })

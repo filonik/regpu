@@ -72,9 +72,9 @@ const view = mat4.create()
 const model = mat4.create()
 
 // prettier-ignore
-regpu.frame(({ canvas, time }) => {
+regpu.canvasFrame(({ canvas, time }) => {
   mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.01, 100, projection)
-  mat4.lookAt([2, 2, 2], [0, 0, 0], [0, 1, 0], view)
+  mat4.lookAt([5 / Math.SQRT2, 5 / Math.SQRT2, 0], [0, 0, 0], [0, 1, 0], view)
   mat4.rotation([0, 1, 0], time, model)
 
   renderPass(() => {

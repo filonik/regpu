@@ -1,0 +1,33 @@
+{
+  "name": "@filonik/regpu-xr",
+  "version": "0.0.1",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/regpu-xr.umd.cjs",
+  "module": "./dist/regpu-xr.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/regpu-xr.js",
+      "require": "./dist/regpu-xr.umd.cjs"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly --outDir dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/webxr": "^0.5.24",
+    "@webgpu/types": "^0.1.71"
+  },
+  "peerDependencies": {
+    "@filonik/regpu": "^0.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vite": "^7"
+  }
+}

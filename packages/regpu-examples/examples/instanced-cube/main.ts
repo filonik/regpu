@@ -50,7 +50,7 @@ for (let x = 0; x < xCount; x++) {
   }
 }
 
-regpu.frame(({ canvas, time }) => {
+regpu.canvasFrame(({ canvas, time }) => {
   const projectionMatrix = mat4.perspective(
     (2 * Math.PI) / 5,
     canvas.width / canvas.height,

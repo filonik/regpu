@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hello Cube XR</title>
+    <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: black;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #enter-xr {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      padding: 8px 14px;
+      border: 1px solid #666;
+      border-radius: 6px;
+      background: #222;
+      color: white;
+      cursor: pointer;
+    }
+    #enter-xr:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+    #xr-status {
+      pointer-events: none;
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      right: 16px;
+      color: white;
+      font: 14px sans-serif;
+    }
+    </style>
+  </head>
+  <body>
+    <canvas></canvas>
+    <button id="enter-xr" type="button" hidden>Enter XR</button>
+    <div id="xr-status" role="status" aria-live="polite"></div>
+    <script type="module" src="main.ts"></script>
+  </body>
+</html>

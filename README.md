@@ -24,7 +24,36 @@ npm run build
 
 ## Commands and Scopes
 
-Create an instance with a canvas selector, canvas element, container element, or options such as `{ canvas, format, alphaMode }`. A container receives a new canvas. `frame` starts an animation loop and submits commands recorded during each callback; its context contains `canvas`, `device`, `context` (the WebGPU canvas context), and `time` in seconds.
+Create an instance with a canvas selector, canvas element, iterable of canvases, container element, or options such as `{ canvas, format, alphaMode }`. A container receives a new canvas.
+
+`submit(callback)` immediately creates a command encoder, calls the callback synchronously,
+finishes the encoder, and submits its command buffer. It releases temporary uniform buffers
+after submission and returns without waiting for GPU completion. Use it for rendering on
+demand or one-off compute work. Callbacks must be synchronous; `submit` cannot be nested
+inside another submission or a scheduled frame. If the callback throws, its recorded
+commands are discarded and temporary buffers are still released.
+
+`frame(callback)` registers work for each animation tick and returns an idempotent stop
+function. All registrations on the instance share one animation loop, command encoder,
+and submission per tick, and run in registration order. The first tick has `delta: 0`;
+stopping the last registration cancels scheduling, and restarting begins with `delta: 0`.
+Additions during a callback start next tick; registrations disposed before their turn are
+skipped. Stopping inside a callback still submits commands already recorded.
+
+The callback context contains `canvas`, `device`, `context` (the WebGPU canvas context),
+`format`, `time` in seconds, and `delta` in seconds. The first canvas is the default target.
+`submit` uses the latest context without advancing the animation clock; before the first
+scheduled tick, `time` and `delta` are zero.
+
+`perCanvas(callback)` selects each initialized canvas as the current target, calls the
+callback, and restores the previous target. It does not schedule or submit work. Use it
+inside `frame` or `submit`, or use `canvasFrame(callback)` as shorthand for
+`frame(() => perCanvas(callback))`.
+
+An optional second argument to `frame`, `{ request(callback), cancel(handle) }`, supplies a
+custom frame source. Registrations using the same source object share a loop and submission;
+different source objects have independent timing. A thrown frame callback stops the
+registrations using that source and aborts that tick's submission.
 
 This is the structure of the [triangle example](packages/regpu-examples/examples/hello-triangle/main.ts); its WGSL defines `vs_main` and `fs_main`:
 
@@ -37,7 +66,7 @@ const renderPass = regpu.render.pass({});
 const withPipeline = regpu.render({ pipeline: triangleSource });
 const drawTriangle = regpu.render({ count: 3 });
 
-regpu.frame(() => {
+regpu.canvasFrame(() => {
   renderPass(() => {
     withPipeline(() => {
       drawTriangle();
@@ -46,7 +75,7 @@ regpu.frame(() => {
 });
 ```
 
-A command without a callback draws or dispatches. With a callback, it supplies state to nested commands without issuing a draw itself. Calls support `command()`, `command(props)`, `command(callback)`, and `command(props, callback)`. Passes take `pass(callback)` or `pass(props, callback)` and must execute inside a frame.
+A command without a callback draws or dispatches. With a callback, it supplies state to nested commands without issuing a draw itself. Calls support `command()`, `command(props)`, `command(callback)`, and `command(props, callback)`. Passes take `pass(callback)` or `pass(props, callback)` and must execute inside `submit` or a scheduled frame.
 
 State fields can be constants or functions `(props, context) => value`, evaluated on each invocation:
 
@@ -83,7 +112,7 @@ For geometry, provide named `attributes` as flat or nested number arrays (or typ
 
 ## Passes
 
-Unlike WebGL and regl, WebGPU records rendering and compute work inside explicit passes. In regpu, `regpu.render.pass(...)` and `regpu.compute.pass(...)` create reusable pass scopes. Calling a pass inside `frame` begins the corresponding WebGPU pass, records the commands invoked by its callback, and ends the pass when the callback returns. Render commands only take effect inside a render pass, and compute commands only take effect inside a compute pass. A frame may contain multiple passes, which execute in the order they are called.
+Unlike WebGL and regl, WebGPU records rendering and compute work inside explicit passes. In regpu, `regpu.render.pass(...)` and `regpu.compute.pass(...)` create reusable pass scopes. Calling a pass inside `submit` or `frame` begins the corresponding WebGPU pass, records the commands invoked by its callback, and ends the pass when the callback returns. Render commands only take effect inside a render pass, and compute commands only take effect inside a compute pass. A frame may contain multiple passes, which execute in the order they are called.
 
 Render-pass state controls attachment behavior such as the color and depth clear values. Like command state, it may use resolver functions, so the same pass can receive different props each time it runs. This small example uses the frame time to cycle the canvas clear color without drawing any geometry:
 
@@ -110,7 +139,25 @@ regpu.frame(({ time }) => {
 
 The callback is still required even when a pass only clears its attachments. Place draw calls inside that callback to render into the same pass.
 
-Pass `colorAttachments` and `depthAttachment` texture resources to render offscreen. A color attachment may also be an object with a pre-created `view` and optional `clear`, `loadOp`, and `storeOp` values. Set `depthAttachment` to `null` for a color-only pass.
+Pass `colorAttachments` and `depthAttachment` texture resources to render offscreen. A color attachment may also be an object with a pre-created `view` and optional `clear`, `loadOp`, and `storeOp` values. Set `depthAttachment` to `null` for a color-only pass. Set `viewport: { x, y, width, height }` to render into a pixel region of an attachment.
+
+<!--
+### Experimental WebXR
+
+Import `createREGPU` from
+[@filonik/regpu-xr](packages/regpu-xr/README.md) to create an
+XR-compatible ReGpu instance with session controls, lifecycle hooks, and managed canvas/XR
+rendering. The helper switches the shared `frame` scheduler between window and XR session timing
+and re-exports core types. It uses the initialized device to render each eye during a WebXR
+frame. [Hello Cube XR](packages/regpu-examples/examples/hello-cube-xr/main.ts), listed
+in the example browser's XR group, demonstrates an Enter XR button, canvas fallback, and
+session cleanup. The binding requires a compatible browser and headset.
+
+Register the canvas fallback with `regpu.canvasFrame(callback)`. The helper pauses it on XR
+entry and resumes it after failed entry or session exit.
+Register the per-eye renderer with `regpu.viewFrame(callback)`, then call `regpu.enter()`
+to enter an XR session.
+-->
 
 ### Render Passes
 
@@ -229,3 +276,57 @@ Automatic vertex layouts support float scalars and vectors; uniform packing supp
 - https://github.com/software-mansion/TypeGPU
 - https://gitlab.com/unconed/use.gpu
 - https://github.com/oframe/ogl
+
+## Multiple canvases
+
+The `canvas` option accepts a single canvas, a selector matching canvases, or an iterable
+such as an array, `NodeList`, or `Set`. Every instance uses a fixed list of canvases;
+a single canvas is simply a list of one. Duplicates are removed and empty selections
+or selections containing non-canvas elements are rejected. A top-level selector matching
+one container still creates a canvas inside it.
+
+```ts
+const regpu = await createREGPU({ canvas: ".preview" });
+// Also: createREGPU([canvasA, canvasB]) or createREGPU(document.querySelectorAll('canvas'))
+const pass = regpu.render.pass({});
+
+const stop = regpu.canvasFrame(({ canvas, time }) => {
+  const aspect = canvas.width / canvas.height;
+  pass(() => drawScene({ aspect, time }));
+});
+```
+
+`canvasFrame` invokes its callback once per initialized canvas on each animation tick,
+in initialization order. Each callback gets that canvas and its `GPUCanvasContext`, with
+the same `time` and `delta` for the whole tick. Default color/depth attachments and command
+resolver context follow the current canvas. All passes share one command encoder and
+submission; pipelines, buffers, textures, and the device are shared across the instance.
+All canvases use the configured presentation format and alpha mode.
+
+Each canvas follows its CSS size and device pixel ratio through `ResizeObserver`, with
+backing dimensions clamped to the device limit. Give canvases CSS dimensions independent
+of their backing-store attributes, for example `width: 100%; height: 200px`. Depth textures
+are created only when a pass requests its default depth attachment, and recreated only
+for the canvas whose dimensions changed. `depthAttachment: null` avoids allocating depth.
+
+Use `frame` for shared simulation/compute work, followed by explicit canvas iteration:
+
+```ts
+const stop = regpu.frame(({ delta }) => {
+  updateSimulation(delta);
+  regpu.perCanvas(({ canvas }) => {
+    pass(() => drawScene({ aspect: canvas.width / canvas.height }));
+  });
+});
+```
+
+Separate `frame` and `canvasFrame` registrations also share the same tick's encoder and
+submission, in registration order. Each registration has its own idempotent disposer;
+stopping a helper inside its callback skips its remaining canvas callbacks.
+To render once, use `submit(() => regpu.perCanvas(callback))`.
+
+The [Multiple Canvases example](packages/regpu-examples/examples/multiple-canvases/main.ts)
+creates 200 previews with different sizes and colors, one pipeline, and one device.
+An `IntersectionObserver` maintains a visibility set; the callback returns before any
+GPU work for offscreen canvases. The example includes pause/resume, a preview-size control,
+and a switch for comparing visible-only rendering with rendering every canvas.

@@ -19,6 +19,9 @@
     "paths": {
       "@filonik/regpu": [
         "./packages/regpu/src/index.ts"
+      ],
+      "@filonik/regpu-xr": [
+        "./packages/regpu-xr/src/index.ts"
       ]
     },
 

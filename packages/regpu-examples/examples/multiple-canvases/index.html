@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multiple Canvases</title>
+  </head>
+  <body>
+    <div class="status-bar">
+      <div class="controls">
+        <button id="pause" type="button" disabled>Pause animation</button>
+        <label for="preview-size"
+          >Preview size <input id="preview-size" type="range" min="150" max="300" value="210"
+        /></label>
+        <label
+          ><input id="visible-only" type="checkbox" checked /> Render visible previews only</label
+        >
+      </div>
+      <span class="counts"><strong id="visible-count">0</strong> of 200 visible</span>
+    </div>
+    <main id="gallery" aria-label="Animated previews"></main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
