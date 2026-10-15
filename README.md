@@ -22,38 +22,15 @@ npm run dev
 npm run build
 ```
 
+### Check Types
+
+```sh
+npm run typecheck
+```
+
 ## Commands and Scopes
 
-Create an instance with a canvas selector, canvas element, iterable of canvases, container element, or options such as `{ canvas, format, alphaMode }`. A container receives a new canvas.
-
-`submit(callback)` immediately creates a command encoder, calls the callback synchronously,
-finishes the encoder, and submits its command buffer. It releases temporary uniform buffers
-after submission and returns without waiting for GPU completion. Use it for rendering on
-demand or one-off compute work. Callbacks must be synchronous; `submit` cannot be nested
-inside another submission or a scheduled frame. If the callback throws, its recorded
-commands are discarded and temporary buffers are still released.
-
-`frame(callback)` registers work for each animation tick and returns an idempotent stop
-function. All registrations on the instance share one animation loop, command encoder,
-and submission per tick, and run in registration order. The first tick has `delta: 0`;
-stopping the last registration cancels scheduling, and restarting begins with `delta: 0`.
-Additions during a callback start next tick; registrations disposed before their turn are
-skipped. Stopping inside a callback still submits commands already recorded.
-
-The callback context contains `canvas`, `device`, `context` (the WebGPU canvas context),
-`format`, `time` in seconds, and `delta` in seconds. The first canvas is the default target.
-`submit` uses the latest context without advancing the animation clock; before the first
-scheduled tick, `time` and `delta` are zero.
-
-`perCanvas(callback)` selects each initialized canvas as the current target, calls the
-callback, and restores the previous target. It does not schedule or submit work. Use it
-inside `frame` or `submit`, or use `canvasFrame(callback)` as shorthand for
-`frame(() => perCanvas(callback))`.
-
-An optional second argument to `frame`, `{ request(callback), cancel(handle) }`, supplies a
-custom frame source. Registrations using the same source object share a loop and submission;
-different source objects have independent timing. A thrown frame callback stops the
-registrations using that source and aborts that tick's submission.
+Create an instance with a canvas selector, canvas element, container element, or options such as `{ canvas, format, alphaMode }`. A container receives a new canvas. `frame` starts an animation loop and submits commands recorded during each callback; its context contains `canvas`, `device`, `context` (the WebGPU canvas context), and `time` in seconds.
 
 This is the structure of the [triangle example](packages/regpu-examples/examples/hello-triangle/main.ts); its WGSL defines `vs_main` and `fs_main`:
 
@@ -75,7 +52,7 @@ regpu.canvasFrame(() => {
 });
 ```
 
-A command without a callback draws or dispatches. With a callback, it supplies state to nested commands without issuing a draw itself. Calls support `command()`, `command(props)`, `command(callback)`, and `command(props, callback)`. Passes take `pass(callback)` or `pass(props, callback)` and must execute inside `submit` or a scheduled frame.
+A command without a callback draws or dispatches. With a callback, it supplies state to nested commands without issuing a draw itself. Calls support `command()`, `command(props)`, `command(callback)`, and `command(props, callback)`. Passes take `pass(callback)` or `pass(props, callback)` and must execute inside a frame.
 
 State fields can be constants or functions `(props, context) => value`, evaluated on each invocation:
 
@@ -263,21 +240,44 @@ struct Model {
 
 Automatic vertex layouts support float scalars and vectors; uniform packing supports `f32`, float vectors, `mat4x4f`, and fixed-size arrays of those types. Storage buffers are reflected from WGSL and supplied by variable name through `buffers`. Per-frame uniform buffers are released after submission; callers own resource wrappers they create explicitly.
 
-## Related
+## Advanced Rendering
 
-### Main
+### Immediate Rendering
 
-- https://github.com/regl-project/regl
-- https://github.com/webgpu/webgpu-samples
+`submit(callback)` immediately creates a command encoder, calls the callback synchronously,
+finishes the encoder, and submits its command buffer. It releases temporary uniform buffers
+after submission and returns without waiting for GPU completion. Use it for rendering on
+demand or one-off compute work. Callbacks must be synchronous; `submit` cannot be nested
+inside another submission or a scheduled frame. If the callback throws, its recorded
+commands are discarded and temporary buffers are still released.
 
-### Other
+Passes record commands into the current encoder. In a scheduled tick, all callbacks using the same frame source record into one encoder, which is finished and submitted after those callbacks complete. For immediate work, `submit` provides the recording context instead.
 
-- https://github.com/WebGLSamples/WebGL2Samples
-- https://github.com/software-mansion/TypeGPU
-- https://gitlab.com/unconed/use.gpu
-- https://github.com/oframe/ogl
+### Animation Loop
 
-## Multiple canvases
+`frame(callback)` registers work for each animation tick and returns an idempotent stop
+function. All registrations on the instance share one animation loop, command encoder,
+and submission per tick, and run in registration order. The first tick has `delta: 0`;
+stopping the last registration cancels scheduling, and restarting begins with `delta: 0`.
+Additions during a callback start next tick; registrations disposed before their turn are
+skipped. Stopping inside a callback still submits commands already recorded.
+
+The callback context contains `canvas`, `device`, `context` (the WebGPU canvas context),
+`format`, `time` in seconds, and `delta` in seconds. The first canvas is the default target.
+`submit` uses the latest context without advancing the animation clock; before the first
+scheduled tick, `time` and `delta` are zero.
+
+An optional second argument to `frame`, `{ request(callback), cancel(handle) }`, supplies a
+custom frame source. Registrations using the same source object share a loop and submission;
+different source objects have independent timing. A thrown frame callback stops the
+registrations using that source and aborts that tick's submission.
+
+### Multi-Canvas Rendering
+
+`perCanvas(callback)` selects each initialized canvas as the current target, calls the
+callback, and restores the previous target. It does not schedule or submit work. Use it
+inside `frame` or `submit`, or use `canvasFrame(callback)` as shorthand for
+`frame(() => perCanvas(callback))`.
 
 The `canvas` option accepts a single canvas, a selector matching canvases, or an iterable
 such as an array, `NodeList`, or `Set`. Every instance uses a fixed list of canvases;
@@ -330,3 +330,17 @@ creates 200 previews with different sizes and colors, one pipeline, and one devi
 An `IntersectionObserver` maintains a visibility set; the callback returns before any
 GPU work for offscreen canvases. The example includes pause/resume, a preview-size control,
 and a switch for comparing visible-only rendering with rendering every canvas.
+
+## Related
+
+### Main
+
+- https://github.com/regl-project/regl
+- https://github.com/webgpu/webgpu-samples
+
+### Other
+
+- https://github.com/WebGLSamples/WebGL2Samples
+- https://github.com/software-mansion/TypeGPU
+- https://gitlab.com/unconed/use.gpu
+- https://github.com/oframe/ogl
