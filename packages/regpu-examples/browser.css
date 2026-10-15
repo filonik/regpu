@@ -447,6 +447,7 @@ a {
   align-self: stretch;
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  overscroll-behavior-y: none;
   scrollbar-width: none;
 }
 .source-tabs::-webkit-scrollbar {
