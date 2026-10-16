@@ -24,6 +24,7 @@ export default defineConfig({
         testPass: resolve(import.meta.dirname, 'examples/test-pass/index.html'),
         gaussianSplat: resolve(import.meta.dirname, 'examples/gaussian-splat/index.html'),
         wireframe: resolve(import.meta.dirname, 'examples/wireframe/index.html'),
+        stencilMask: resolve(import.meta.dirname, 'examples/stencil-mask/index.html'),
         deferredRendering: resolve(import.meta.dirname, 'examples/deferred-rendering/index.html')
       }
     }

@@ -1,4 +1,5 @@
 // This example is based on: https://github.com/webgpu/webgpu-samples/tree/main/sample/computeBoids
+// See THIRD_PARTY.md for the upstream license.
 
 import { createREGPU } from '@filonik/regpu'
 

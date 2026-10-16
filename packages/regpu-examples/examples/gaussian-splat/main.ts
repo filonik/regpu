@@ -105,23 +105,21 @@ const draw = regpu.render<SceneProps>({
 
 const camera = createCamera(canvas)
 
-regpu.frame(({ time, delta }) => {
+regpu.frame(({ time, delta, canvas }) => {
   camera.tick(delta)
-  regpu.perCanvas(({ canvas }) => {
-    const fovY = (50 * Math.PI) / 180
-    const focalY = canvas.height / (2 * Math.tan(fovY / 2))
-    const uniforms = {
-      viewMatrix: camera.view(),
-      projMatrix: mat4.perspective(fovY, canvas.width / canvas.height, 0.1, 50),
-      screenParams: [canvas.width, canvas.height, focalY, focalY],
-      timeParams: [time, 0, 0, 0]
-    }
-    computePass(() => {
-      project({ uniforms })
-      sortParams.forEach((_params, pass) => sort({ pass }))
-    })
-    renderPass(() => draw({ uniforms }))
+  const fovY = (50 * Math.PI) / 180
+  const focalY = canvas.height / (2 * Math.tan(fovY / 2))
+  const uniforms = {
+    viewMatrix: camera.view(),
+    projMatrix: mat4.perspective(fovY, canvas.width / canvas.height, 0.1, 50),
+    screenParams: [canvas.width, canvas.height, focalY, focalY],
+    timeParams: [time, 0, 0, 0]
+  }
+  computePass(() => {
+    project({ uniforms })
+    sortParams.forEach((_params, pass) => sort({ pass }))
   })
+  renderPass(() => draw({ uniforms }))
   document.querySelector('#stats')!.textContent =
     `${NUM_SPLATS.toLocaleString()} splats · ${(1 / Math.max(delta, 0.001)).toFixed(0)} fps`
 })

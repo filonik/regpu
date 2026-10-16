@@ -48,10 +48,23 @@ export type Context = {
   delta: number
 }
 
-export type FrameCallback = (context: Context) => void
+/** One canvas target. Attachments are acquired lazily and are valid for this submission. */
+export type CanvasContext = Context & {
+  readonly colorAttachment: ColorAttachment
+  readonly depthAttachment: DepthStencilAttachment
+}
+
+export type FrameContext = Context & {
+  /** Targets in initialization order; iterating does not change the default target. */
+  readonly canvasContexts: readonly CanvasContext[]
+}
+
+export type FrameCallback = (context: FrameContext) => void
 
 export interface FrameSource {
+  /** Request one asynchronous callback, with a timestamp in milliseconds. */
   request(callback: FrameRequestCallback): number
+  /** Cancel a pending request. Late deliveries are ignored by frame(). */
   cancel(handle: number): void
 }
 
@@ -266,6 +279,8 @@ export type ResolvedCommandState = RenderPipelineProps &
     indices?: VertexData
     count?: number | [number, number?, number?]
     instances?: number
+    /** Stencil test/write reference, inherited by nested commands; defaults to 0. */
+    stencilReference?: number
     indirect?: Buffer
   }
 
@@ -305,10 +320,7 @@ export interface ReGpu {
 
   /** Record and submit commands synchronously, without waiting for GPU completion. */
   submit(cb: FrameCallback): void
-  /** Register work in a shared loop. Callbacks using the same source share one submission. */
+  readonly windowFrameSource: FrameSource
+  /** Run one synchronous callback per tick. Only one callback per source may be active. */
   frame(cb: FrameCallback, source?: FrameSource): () => void
-  /** Select each canvas as the current target without scheduling or submitting work. */
-  perCanvas(cb: FrameCallback): void
-  /** Render each initialized canvas once per animation tick, sharing time, delta, and submission. */
-  canvasFrame(cb: FrameCallback): () => void
 }

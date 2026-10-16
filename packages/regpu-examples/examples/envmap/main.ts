@@ -1,4 +1,5 @@
 // This example is based on: https://github.com/mikolalysenko/regl/blob/gh-pages/example/envmap.js
+// See THIRD_PARTY.md for the upstream license.
 
 import { createREGPU, loadImageBitmaps } from '@filonik/regpu'
 import { mat4 } from 'wgpu-matrix'
@@ -80,18 +81,16 @@ const drawBunny = regpu.render({
   uniforms: () => ({ camera: { projection, view, inverseView } })
 })
 
-regpu.frame(({ delta }) => {
+regpu.frame(({ delta, canvas }) => {
   camera.tick(delta)
   camera.view(view)
   mat4.inverse(view, inverseView)
-  regpu.perCanvas(({ canvas }) => {
-    mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.01, 1000, projection)
-    mat4.inverse(projection, inverseProjection)
-    renderPass(() => {
-      withEnvironment(() => {
-        drawBackground()
-        drawBunny()
-      })
+  mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.01, 1000, projection)
+  mat4.inverse(projection, inverseProjection)
+  renderPass(() => {
+    withEnvironment(() => {
+      drawBackground()
+      drawBunny()
     })
   })
 })

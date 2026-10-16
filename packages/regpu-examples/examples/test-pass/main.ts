@@ -34,7 +34,7 @@ function getColor(time: number): GPUColor {
   ]
 }
 
-regpu.canvasFrame(({ time }) => {
+regpu.frame(({ time }) => {
   const color = getColor(time)
   renderPass({ color }, () => {})
 })

@@ -65,7 +65,7 @@ const drawBunnies = regpu.render<{ projection: Float32Array; view: Float32Array;
 
 const view = mat4.lookAt([0, 55, 165], [0, 0, 0], [0, 1, 0])
 
-regpu.canvasFrame(({ canvas, time }) => {
+regpu.frame(({ canvas, time }) => {
   const projection = mat4.perspective(Math.PI / 2, canvas.width / canvas.height, 0.01, 1000)
 
   renderPass(() => {

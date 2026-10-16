@@ -2,6 +2,7 @@ import type * as REGPU from './types'
 import { createBindings } from './bindings'
 import { createREGPUPipelines } from './pipeline'
 import { createREGPUBuffers } from './buffer'
+import { createFrameScheduler } from './frame'
 import type { RenderPipelineResource, ComputePipelineResource } from './layout'
 
 export function createCommandScopes(context: REGPU.Context) {
@@ -65,7 +66,8 @@ export function createCommandScopes(context: REGPU.Context) {
 export function createREGPUCommands(
   context: REGPU.Context,
   pipelines: ReturnType<typeof createREGPUPipelines>,
-  getDepthTexture: () => GPUTexture | undefined
+  getDepthTexture: () => GPUTexture | undefined,
+  getCanvasContexts: (context: REGPU.Context) => readonly REGPU.CanvasContext[]
 ) {
   const { device } = context
   const { module, renderPipeline, computePipeline } = pipelines
@@ -245,6 +247,10 @@ export function createREGPUCommands(
       const indexBuffer = current.indices && buffers.indexBuffer(current.indices)
       if (indexBuffer) pass.setIndexBuffer(indexBuffer.gpu, indexBuffer.format)
 
+      // Apply the resolved value on every draw so nested scopes and sibling
+      // commands restore their reference, including WebGPU's default of zero.
+      pass.setStencilReference(current.stencilReference ?? 0)
+
       if (current.indirect) pass.drawIndirect(current.indirect._gpu, 0)
       else if (indexBuffer)
         pass.drawIndexed(
@@ -259,7 +265,14 @@ export function createREGPUCommands(
     if (encoder) throw new Error('submit cannot be nested inside submit or a frame callback')
     encoder = device.createCommandEncoder()
     try {
-      callback(context)
+      let canvasContexts: readonly REGPU.CanvasContext[] | undefined
+      const frameContext: REGPU.FrameContext = {
+        ...context,
+        get canvasContexts() {
+          return (canvasContexts ??= getCanvasContexts(frameContext))
+        }
+      }
+      callback(frameContext)
       device.queue.submit([encoder.finish()])
     } finally {
       encoder = undefined
@@ -268,65 +281,7 @@ export function createREGPUCommands(
     }
   }
 
-  const windowSource: REGPU.FrameSource = {
-    request: (callback) => requestAnimationFrame(callback),
-    cancel: (handle) => cancelAnimationFrame(handle)
-  }
-  type Registration = { callback: REGPU.FrameCallback }
-  type Loop = {
-    callbacks: Set<Registration>
-    handle?: number
-    previousTime?: number
-    running: boolean
-  }
-  const loops = new Map<REGPU.FrameSource, Loop>()
-
-  function frame(callback: REGPU.FrameCallback, source = windowSource) {
-    let loop = loops.get(source)
-    if (!loop) {
-      loop = { callbacks: new Set(), running: false }
-      loops.set(source, loop)
-    }
-    const current = loop
-    const registration = { callback }
-    current.callbacks.add(registration)
-
-    function tick(ms: number) {
-      current.handle = undefined
-      if (!current.callbacks.size) return
-      current.running = true
-      context.time = ms * 0.001
-      context.delta = current.previousTime === undefined ? 0 : context.time - current.previousTime
-      current.previousTime = context.time
-      // Additions start next tick; disposal before a callback's turn skips it.
-      const callbacks = [...current.callbacks]
-      try {
-        submit(() => {
-          for (const entry of callbacks) {
-            if (current.callbacks.has(entry)) entry.callback(context)
-          }
-        })
-      } catch (error) {
-        current.callbacks.clear()
-        throw error
-      } finally {
-        current.running = false
-        if (current.callbacks.size) current.handle = source.request(tick)
-        else loops.delete(source)
-      }
-    }
-
-    if (current.handle === undefined && !current.running) current.handle = source.request(tick)
-    return () => {
-      current.callbacks.delete(registration)
-      if (!current.callbacks.size && !current.running) {
-        if (current.handle !== undefined) source.cancel(current.handle)
-        current.handle = undefined
-        // An old disposer must not remove a later loop using the same source.
-        if (loops.get(source) === current) loops.delete(source)
-      }
-    }
-  }
+  const frame = createFrameScheduler(context, submit)
 
   return {
     module,

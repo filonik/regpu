@@ -5,6 +5,7 @@ import { createREGPUBuffers } from './buffer'
 import { createREGPUPipelines } from './pipeline'
 import { createREGPUCommands } from './command'
 import { resolveCanvases, createCanvasTargets } from './canvas'
+import { windowFrameSource } from './frame'
 
 function toRequestAdapterOptions(
   options: REGPU.InitializationOptions
@@ -44,7 +45,26 @@ export async function createCanvasContext(arg: REGPU.InitializationArg) {
   }
   const byCanvas = new Map(targets.map((target) => [target.canvas, target]))
   const getDepthTexture = () => byCanvas.get(context.canvas)?.getDepthTexture()
-  return { context, targets, format, getDepthTexture }
+  const getCanvasContexts = (frameContext: REGPU.Context): readonly REGPU.CanvasContext[] =>
+    targets.map((target) => {
+      let colorAttachment: REGPU.ColorAttachment | undefined
+      let depthAttachment: REGPU.DepthStencilAttachment | undefined
+      return {
+        device: frameContext.device,
+        format: frameContext.format,
+        time: frameContext.time,
+        delta: frameContext.delta,
+        canvas: target.canvas,
+        context: target.context,
+        get colorAttachment() {
+          return (colorAttachment ??= { view: target.context.getCurrentTexture().createView() })
+        },
+        get depthAttachment() {
+          return (depthAttachment ??= { view: target.getDepthTexture().createView() })
+        }
+      }
+    })
+  return { context, targets, format, getDepthTexture, getCanvasContexts }
 }
 
 export async function loadImageBitmap(url: string): Promise<ImageBitmap> {
@@ -67,49 +87,18 @@ export async function createREGPU(container: HTMLElement): Promise<REGPU.ReGpu>
 export async function createREGPU(canvases: Iterable<HTMLCanvasElement>): Promise<REGPU.ReGpu>
 export async function createREGPU(options: REGPU.InitializationOptions): Promise<REGPU.ReGpu>
 export async function createREGPU(arg: REGPU.InitializationArg): Promise<REGPU.ReGpu> {
-  const { context, targets, getDepthTexture } = await createCanvasContext(arg)
+  const { context, getDepthTexture, getCanvasContexts } = await createCanvasContext(arg)
   const buffers = createREGPUBuffers(context)
   const textures = createREGPUTextures(context)
   const pipelines = createREGPUPipelines(context)
-  const commands = createREGPUCommands(context, pipelines, getDepthTexture)
-  function perCanvas(callback: REGPU.FrameCallback) {
-    const { canvas, context: canvasContext, time, delta } = context
-    try {
-      for (const target of targets) {
-        context.canvas = target.canvas
-        context.context = target.context
-        context.time = time
-        context.delta = delta
-        callback(context)
-      }
-    } finally {
-      context.canvas = canvas
-      context.context = canvasContext
-      context.time = time
-      context.delta = delta
-    }
-  }
-
-  function canvasFrame(callback: REGPU.FrameCallback) {
-    let stopped = false
-    const stop = commands.frame(() => {
-      perCanvas((context) => {
-        if (!stopped) callback(context)
-      })
-    })
-    return () => {
-      stopped = true
-      stop()
-    }
-  }
+  const commands = createREGPUCommands(context, pipelines, getDepthTexture, getCanvasContexts)
 
   const result = {
     _context: context,
     ...buffers,
     ...textures,
     ...commands,
-    perCanvas,
-    canvasFrame
+    windowFrameSource
   }
   return result
 }

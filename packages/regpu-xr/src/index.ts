@@ -4,6 +4,7 @@
 import { createREGPU as createCoreREGPU } from '@filonik/regpu'
 import type {
   Context,
+  FrameContext,
   FrameSource,
   InitializationArg,
   InitializationOptions,
@@ -11,9 +12,10 @@ import type {
   Texture
 } from '@filonik/regpu'
 import type { XRGPUBindingConstructor } from './webgpu'
+import { createSwitchableFrameSource } from './frame-source'
 
 export type * from '@filonik/regpu'
-export { loadImageBitmap, loadImageBitmaps } from '@filonik/regpu'
+export { loadImageBitmap, loadImageBitmaps, windowFrameSource } from '@filonik/regpu'
 
 // TODO
 function createTextureResource(
@@ -39,7 +41,7 @@ export type XRInitializationOptions = InitializationOptions & {
 
 export type XRInitializationArg = InitializationArg | XRInitializationOptions
 
-export type XRContext = Context & {
+export type XRViewContext = Context & {
   viewport: { x: number; y: number; width: number; height: number }
   colorAttachment: Texture
   depthAttachment: Texture
@@ -49,10 +51,12 @@ export type XRContext = Context & {
   xrView: XRView
 }
 
-export type XRFrameCallback = (context: XRContext) => void
-
-/** Tick context shared by canvas and XR scheduling; view data comes from perView. */
-export type XRFrameContext = Context & { xrFrame?: XRFrame }
+/** Tick context with explicit canvas targets and the current tracked XR views. */
+export type XRFrameContext = FrameContext & {
+  xrFrame?: XRFrame
+  /** Empty outside an XR tick or when the viewer pose is unavailable. */
+  readonly viewContexts: readonly XRViewContext[]
+}
 export type FrameCallback = (context: XRFrameContext) => void
 
 export type XRSessionState = 'idle' | 'entering' | 'entered' | 'exiting'
@@ -69,17 +73,12 @@ export interface ReGpuXr extends ReGpu {
   onError(cb: XRErrorHook): () => void
   isSupported(): Promise<boolean>
   submit(cb: FrameCallback): void
-  /** Register once-per-tick work, switching between window and XR session timing. */
+  /** XR timing only; dormant outside a ready session. */
+  readonly xrFrameSource: FrameSource
+  /** Window/XR handover; paused during entry and exit. */
+  readonly hybridFrameSource: FrameSource
+  /** One synchronous callback per source; defaults to window timing. */
   frame(cb: FrameCallback, source?: FrameSource): () => void
-  perCanvas(cb: FrameCallback): void
-  /** Iterate the current XR pose's views synchronously; does nothing outside an XR tick. */
-  perView(cb: XRFrameCallback): void
-  /** Schedule per-canvas rendering outside XR; resumed after exit or failed entry. */
-  canvasFrame(cb: FrameCallback): () => void
-  /** Schedule per-view rendering without requesting a session. */
-  viewFrame(cb: XRFrameCallback): () => void
-  /** Alias for viewFrame. */
-  xrFrame(cb: XRFrameCallback): () => void
   enter(): Promise<void>
   exit(): Promise<void>
 }
@@ -102,7 +101,7 @@ function getAPIs() {
   return { xr, Binding }
 }
 
-/** Create a ReGpu instance with XR support and managed canvas/XR rendering. */
+/** Create a ReGpu instance with XR controls and explicit frame sources. */
 export async function createREGPU(arg: XRInitializationArg): Promise<ReGpuXr> {
   let options: XRInitializationOptions
   if (typeof arg === 'string') {
@@ -125,12 +124,11 @@ export async function createREGPU(arg: XRInitializationArg): Promise<ReGpuXr> {
   return addXR(regpu, options)
 }
 
-/** Coordinate a canvas fallback with XR rendering. Call enter directly from a user gesture. */
+/** Add XR sources and view contexts. Call enter directly from a user gesture. */
 function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
   const context = (regpu as ReGpu & { _context: Context })._context
   const scheduleFrame = regpu.frame.bind(regpu)
   const submit = regpu.submit.bind(regpu)
-  const perCanvas = regpu.perCanvas.bind(regpu)
   let state: XRSessionState = 'idle'
   let active:
     | {
@@ -138,11 +136,13 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
         exit(): Promise<void>
       }
     | undefined
-  const callbacks = new Set<{ callback: FrameCallback }>()
-  let stopFrame: (() => void) | undefined
-  let source: FrameSource | undefined
+  const xrTiming = createSwitchableFrameSource()
+  const hybridTiming = createSwitchableFrameSource(regpu.windowFrameSource)
+  let sessionSource: FrameSource | undefined
   let currentFrame: XRFrame | undefined
-  let iterateViews: ((callback: XRFrameCallback) => void) | undefined
+  let createViewContexts: ((context: FrameContext) => readonly XRViewContext[]) | undefined
+  let currentViews: readonly XRViewContext[] | undefined
+  const emptyViews: readonly XRViewContext[] = []
   const hooks = {
     beforeEnter: new Set<{ callback: XRLifecycleHook }>(),
     entered: new Set<{ callback: XRLifecycleHook }>(),
@@ -182,57 +182,47 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
     throw error
   }
 
-  function pauseFrames() {
-    stopFrame?.()
-    stopFrame = undefined
+  function refreshSources() {
+    const ready = state === 'entered' ? sessionSource : undefined
+    xrTiming.setSource(ready)
+    hybridTiming.setSource(active ? ready : regpu.windowFrameSource)
   }
 
-  function resumeFrames() {
-    if (stopFrame || !callbacks.size || (active && !source)) return
-    stopFrame = scheduleFrame((context) => {
+  function withXR(context: FrameContext, xrFrame: XRFrame | undefined): XRFrameContext {
+    return {
+      ...context,
+      xrFrame,
+      get viewContexts() {
+        return xrFrame ? (currentViews ??= createViewContexts?.(context) ?? emptyViews) : emptyViews
+      }
+    }
+  }
+
+  function frame(callback: FrameCallback, source = regpu.windowFrameSource) {
+    const timing =
+      source === xrTiming.source
+        ? xrTiming
+        : source === hybridTiming.source
+          ? hybridTiming
+          : undefined
+    let version = -1
+    return scheduleFrame((frameContext) => {
+      if (timing && version !== timing.version) {
+        version = timing.version
+        context.delta = frameContext.delta = 0
+      }
       try {
-        const tick = { ...context, xrFrame: currentFrame }
-        for (const entry of [...callbacks]) {
-          if (callbacks.has(entry)) entry.callback(tick)
-        }
+        callback(withXR(frameContext, timing ? currentFrame : undefined))
       } catch (error) {
-        stopFrame = undefined
-        if (active) {
-          emit('error', error)
-          void active.exit().catch(() => {})
-        } else callbacks.clear()
+        emit('error', error)
+        if (timing && currentFrame && active) void active.exit().catch(() => {})
         throw error
       }
     }, source)
   }
 
-  function frame(callback: FrameCallback, customSource?: FrameSource) {
-    if (customSource) return scheduleFrame(callback, customSource)
-    const registration = { callback }
-    callbacks.add(registration)
-    resumeFrames()
-    return () => {
-      callbacks.delete(registration)
-      if (!callbacks.size) pauseFrames()
-    }
-  }
-
-  function viewFrame(callback: XRFrameCallback) {
-    let stopped = false
-    const stop = frame(() => {
-      api.perView((context) => {
-        if (!stopped) callback(context)
-      })
-    })
-    return () => {
-      stopped = true
-      stop()
-    }
-  }
-
   const mode = options.mode ?? 'immersive-vr'
-  const api: Omit<ReGpuXr, keyof ReGpu> &
-    Pick<ReGpuXr, 'submit' | 'frame' | 'perCanvas' | 'canvasFrame'> = {
+  const api: Omit<ReGpuXr, keyof ReGpu> & Pick<ReGpuXr, 'submit' | 'frame'> = {
     get state() {
       return state
     },
@@ -250,26 +240,10 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
         return false
       }
     },
-    submit: (callback) => submit((context) => callback({ ...context, xrFrame: currentFrame })),
+    submit: (callback) => submit((context) => callback(withXR(context, currentFrame))),
     frame,
-    perCanvas: (callback) =>
-      perCanvas((context) => callback({ ...context, xrFrame: currentFrame })),
-    perView: (callback) => iterateViews?.(callback),
-    canvasFrame(callback) {
-      let stopped = false
-      const stop = frame(() => {
-        if (active) return
-        api.perCanvas((context) => {
-          if (!stopped) callback(context)
-        })
-      })
-      return () => {
-        stopped = true
-        stop()
-      }
-    },
-    viewFrame,
-    xrFrame: viewFrame,
+    xrFrameSource: xrTiming.source,
+    hybridFrameSource: hybridTiming.source,
     async enter() {
       if (active) fail(new Error('An XR session is already entering or active'))
       const apis = getAPIs()
@@ -291,16 +265,17 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
         if (active !== transition) return
         active = undefined
         state = 'idle'
-        resumeFrames()
+        refreshSources()
         if (current) emit('exited')
       }
 
       function cleanup() {
         if (ended) return
         ended = true
-        pauseFrames()
-        source = undefined
-        iterateViews = undefined
+        sessionSource = undefined
+        refreshSources()
+        createViewContexts = undefined
+        currentViews = undefined
         depths.splice(0).forEach((depth) => depth.destroy())
         layer?.destroy?.()
         current?.removeEventListener('end', cleanup)
@@ -316,6 +291,7 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
           if (exitPromise) return exitPromise
           transition.exitRequested = true
           state = 'exiting'
+          refreshSources()
           // Store the promise before notifying hooks, which may call exit again.
           let resolveExit!: () => void
           let rejectExit!: (error: unknown) => void
@@ -341,6 +317,7 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
               beforeExit = false
               transition.exitRequested = false
               if (!ended) state = entering ? 'entering' : 'entered'
+              refreshSources()
               emit('error', error)
               rejectExit(error)
             }
@@ -350,7 +327,7 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
       }
       active = transition
       state = 'entering'
-      pauseFrames()
+      refreshSources()
       emit('beforeEnter')
       try {
         if (transition.exitRequested) throw new Error('XR entry was cancelled')
@@ -384,25 +361,28 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
           if (typeof layer.destroy !== 'function') throw new Error('The XR layer API is incomplete')
           session.updateRenderState({ layers: [layer] })
           const projectionLayer = layer
-          source = {
+          sessionSource = {
             request: (callback) =>
               session.requestAnimationFrame((time, nextFrame) => {
+                const previousFrame = currentFrame
+                const previousViews = currentViews
                 currentFrame = nextFrame
+                currentViews = undefined
                 try {
                   callback(time)
                 } finally {
-                  currentFrame = undefined
+                  currentFrame = previousFrame
+                  currentViews = previousViews
                 }
               }),
             cancel: (handle) => session.cancelAnimationFrame(handle)
           }
-          iterateViews = (callback) => {
+          createViewContexts = (frameContext) => {
             const frame = currentFrame
-            if (!frame || ended || transition.exitRequested) return
+            if (!frame || ended || transition.exitRequested) return []
             const pose = frame.getViewerPose(space)
-            if (!pose) return
-            pose.views.forEach((xrView, index) => {
-              if (ended || transition.exitRequested) return
+            if (!pose) return []
+            return pose.views.map((xrView, index) => {
               const image = binding.getViewSubImage(projectionLayer, xrView)
               if (typeof image.getViewDescriptor !== 'function') {
                 throw new Error('The XR subimage API is incomplete')
@@ -425,8 +405,10 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
                 image.colorTexture,
                 image.getViewDescriptor()
               )
-              callback({
+              return {
                 ...context,
+                time: frameContext.time,
+                delta: frameContext.delta,
                 projection: xrView.projectionMatrix,
                 view: xrView.transform.inverse.matrix,
                 colorAttachment,
@@ -434,12 +416,12 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
                 viewport: image.viewport,
                 xrFrame: frame,
                 xrView
-              })
+              }
             })
           }
           if (ended || transition.exitRequested) throw new Error('XR session ended during entry')
           state = 'entered'
-          resumeFrames()
+          refreshSources()
           emit('entered')
         } catch (error) {
           if (!ended) {
@@ -465,6 +447,6 @@ function addXR(regpu: ReGpu, options: XRInitializationOptions): ReGpuXr {
       await transition?.entryFinished
     }
   }
-  // Preserve accessors such as state while extending scheduling and target iteration.
+  // Preserve accessors such as state while extending scheduling and target contexts.
   return Object.defineProperties(regpu, Object.getOwnPropertyDescriptors(api)) as ReGpuXr
 }

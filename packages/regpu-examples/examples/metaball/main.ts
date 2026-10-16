@@ -1,4 +1,5 @@
 // This example is based on: https://github.com/mikolalysenko/regl/blob/gh-pages/example/metaball.js
+// See THIRD_PARTY.md for the upstream license.
 
 import { createREGPU, loadImageBitmaps } from '@filonik/regpu'
 import { mat4 } from 'wgpu-matrix'
@@ -47,7 +48,9 @@ const normalSampler = regpu.sampler({
   addressModeV: 'repeat'
 })
 
-const renderPass = regpu.render.pass({ clear: { color: [0.14, 0.27, 0.41, 1], depth: 1 } })
+const renderPass = regpu.render.pass({
+  clear: { color: [0.14, 0.27, 0.41, 1], depth: 1 }
+})
 const drawBackground = regpu.render<{ values: ArrayLike<number> }>({
   pipeline: {
     module: backgroundWGSL,
@@ -80,7 +83,7 @@ const camera = createCamera(canvas, {
 })
 const resetVertexCount = new Uint32Array([0])
 
-regpu.frame(({ device, time, delta }) => {
+regpu.frame(({ device, time, delta, canvas }) => {
   camera.tick(delta)
   device.queue.writeBuffer(drawArgs._gpu, 0, resetVertexCount)
 
@@ -88,22 +91,15 @@ regpu.frame(({ device, time, delta }) => {
     generateSurface({ values: [time * 0.5, RESOLUTION, MAX_VERTICES, 0] })
   })
 
-  regpu.perCanvas(({ canvas }) => {
-    const projection = mat4.perspective(
-      (45 * Math.PI) / 180,
-      canvas.width / canvas.height,
-      0.01,
-      10
-    )
-    renderPass(() => {
-      drawBackground({ values: [canvas.width, canvas.height, 0.05, 0] })
-      drawSurface({
-        scene: {
-          projection,
-          view: camera.view(),
-          color: [36 / 255, 70 / 255, 106 / 255, 1]
-        }
-      })
+  const projection = mat4.perspective((45 * Math.PI) / 180, canvas.width / canvas.height, 0.01, 10)
+  renderPass(() => {
+    drawBackground({ values: [canvas.width, canvas.height, 0.05, 0] })
+    drawSurface({
+      scene: {
+        projection,
+        view: camera.view(),
+        color: [36 / 255, 70 / 255, 106 / 255, 1]
+      }
     })
   })
 })

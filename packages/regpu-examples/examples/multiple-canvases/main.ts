@@ -1,6 +1,7 @@
 // This example is based on: https://webgpufundamentals.org/webgpu/webgpu-multiple-canvases-x200-optimized.html
+// See THIRD_PARTY.md for the upstream license.
 
-import { createREGPU, type Context } from '@filonik/regpu'
+import { createREGPU, type CanvasContext, type FrameContext } from '@filonik/regpu'
 import { mat4 } from 'wgpu-matrix'
 import shader from './preview.wgsl?raw'
 import './style.css'
@@ -73,8 +74,9 @@ size.addEventListener('input', () => {
 async function main() {
   // A selector, array, NodeList, or single canvas all use the same initialization path.
   const regpu = await createREGPU({ canvas: '#gallery canvas' })
-  const pass = regpu.render.pass<{ clear: GPUColor }>({
-    clear: ({ clear }) => ({ color: clear }),
+  const pass = regpu.render.pass<CanvasContext>({
+    colorAttachments: ({ colorAttachment }) => [colorAttachment],
+    clear: ({ canvas }) => ({ color: previews.get(canvas)!.clear }),
     depthAttachment: null
   })
   // One pipeline shared across all 200 canvas contexts; uniforms vary per draw.
@@ -85,18 +87,19 @@ async function main() {
   })
   const matrix = mat4.create()
   let animationTime = 0
-  function draw({ canvas }: Context) {
+  function draw(context: CanvasContext) {
+    const { canvas } = context
     // Skip all matrix, attachment, and GPU work for offscreen canvases.
     if (visibleOnly.checked && !visible.has(canvas)) return
     const preview = previews.get(canvas)!
     const aspect = canvas.width / canvas.height
     mat4.ortho(-aspect, aspect, -1, 1, -1, 1, matrix)
     mat4.rotateZ(matrix, animationTime * preview.speed + preview.phase, matrix)
-    pass({ clear: preview.clear }, () => triangle({ matrix, color: preview.color }))
+    pass(context, () => triangle({ matrix, color: preview.color }))
   }
-  function render({ delta }: Context) {
+  function render({ delta, canvasContexts }: FrameContext) {
     animationTime += delta
-    regpu.perCanvas(draw)
+    canvasContexts.forEach(draw)
   }
   let stop: (() => void) | undefined = regpu.frame(render)
   pause.disabled = false

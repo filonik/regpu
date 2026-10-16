@@ -1,4 +1,5 @@
 // This example is based on: https://github.com/mikolalysenko/regl/blob/gh-pages/example/cube-fbo.js
+// See THIRD_PARTY.md for the upstream license.
 
 import { createREGPU, type Uniforms, type UniformStruct } from '@filonik/regpu'
 import { mat4, vec3 } from 'wgpu-matrix'
@@ -66,7 +67,9 @@ const cubePass = regpu.render.pass<{ view: GPUTextureView; clear: GPUColor }>({
   ],
   depthAttachment: cubeDepth
 })
-const renderPass = regpu.render.pass({ clear: { color: [0, 0, 0, 1], depth: 1 } })
+const renderPass = regpu.render.pass({
+  clear: { color: [0, 0, 0, 1], depth: 1 }
+})
 
 const drawGround = regpu.render<{ camera: UniformStruct }>({
   pipeline: { module: groundCode, primitive: { topology: 'triangle-list', cullMode: 'none' } },
@@ -141,7 +144,7 @@ function renderCube(
   })
 }
 
-regpu.frame(({ time, delta }) => {
+regpu.frame(({ time, delta, canvas }) => {
   orbitCamera.tick(delta)
   const bunnyPosition = [15 * Math.cos(time), -2.5, 15 * Math.sin(time)]
   const teapotPosition = [0, 3, 0]
@@ -155,20 +158,18 @@ regpu.frame(({ time, delta }) => {
     drawTeapot({ uniforms: { camera, object: objectUniforms(teapotPosition, teapotTint) } })
   })
 
-  regpu.perCanvas(({ canvas }) => {
-    const sceneCamera = {
-      projection: mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.25, 1000),
-      view: orbitCamera.view(),
-      eye: orbitCamera.eye()
-    }
-    renderPass(() => {
-      drawGround({ camera: sceneCamera })
-      drawTeapot({
-        uniforms: { camera: sceneCamera, object: objectUniforms(teapotPosition, teapotTint) }
-      })
-      drawBunny({
-        uniforms: { camera: sceneCamera, object: objectUniforms(bunnyPosition, bunnyTint) }
-      })
+  const sceneCamera = {
+    projection: mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.25, 1000),
+    view: orbitCamera.view(),
+    eye: orbitCamera.eye()
+  }
+  renderPass(() => {
+    drawGround({ camera: sceneCamera })
+    drawTeapot({
+      uniforms: { camera: sceneCamera, object: objectUniforms(teapotPosition, teapotTint) }
+    })
+    drawBunny({
+      uniforms: { camera: sceneCamera, object: objectUniforms(bunnyPosition, bunnyTint) }
     })
   })
 })

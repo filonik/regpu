@@ -82,6 +82,13 @@ const examples: Example[] = [
     group: 'Rendering'
   },
   {
+    slug: 'stencil-mask',
+    title: 'Stencil Mask',
+    description:
+      'Reveal seven animated scenes through a rotating stencil cube. Move the pointer to move it.',
+    group: 'Rendering'
+  },
+  {
     slug: 'deferred-rendering',
     title: 'Deferred Rendering',
     description: 'Use multiple render targets for deferred shading.',

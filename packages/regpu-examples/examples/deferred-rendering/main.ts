@@ -1,4 +1,5 @@
 // This example is based on: https://github.com/webgpu/webgpu-samples/tree/main/sample/deferredRendering
+// See THIRD_PARTY.md for the upstream license.
 
 import { createREGPU, type UniformStruct } from '@filonik/regpu'
 import { mat4 } from 'wgpu-matrix'

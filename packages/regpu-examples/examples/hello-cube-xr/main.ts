@@ -1,4 +1,9 @@
-import { createREGPU, type UniformStruct, type XRContext } from '@filonik/regpu-xr'
+import {
+  createREGPU,
+  type CanvasContext,
+  type UniformStruct,
+  type XRViewContext
+} from '@filonik/regpu-xr'
 import createCamera from './camera'
 
 import helloCubeCode from './helloCube.wgsl?raw'
@@ -37,8 +42,11 @@ const cube = {
 const canvas = document.querySelector('canvas')!
 const regpu = await createREGPU({ canvas, mode: 'immersive-vr' })
 
-const renderPass = regpu.render.pass({})
-const xrPass = regpu.render.pass<XRContext>({
+const canvasPass = regpu.render.pass<CanvasContext>({
+  colorAttachments: ({ colorAttachment }) => [colorAttachment],
+  depthAttachment: ({ depthAttachment }) => depthAttachment
+})
+const xrPass = regpu.render.pass<XRViewContext>({
   colorAttachments: ({ colorAttachment }) => [colorAttachment],
   depthAttachment: ({ depthAttachment }) => depthAttachment,
   viewport: ({ viewport }) => viewport
@@ -76,27 +84,26 @@ const draw = (u: UniformStruct) => {
   }
 }
 
-// Shared scene updates run once per tick, including while XR is active.
-// prettier-ignore
-regpu.frame(({ time }) => {
+// Choose window/XR handover explicitly; update the scene once before drawing targets.
+regpu.frame(({ time, delta, canvasContexts, viewContexts, xrFrame }) => {
   mat4.translation([0, 1.5, -2.5], model)
   mat4.rotateY(model, time, model)
-})
 
-// The helpers share that tick's encoder and automatically manage canvas/XR handover.
-// prettier-ignore
-regpu.canvasFrame(({ canvas, delta }) => {
-  camera.tick(delta)
-  camera.view(view)
-  mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.01, 100, projection)
-  renderPass({}, draw({projection, view, model}))
-})
-
-// prettier-ignore
-regpu.viewFrame((context) => {
-  const { projection, view } = context
-  xrPass(context, draw({projection, view, model}))
-})
+  if (xrFrame) {
+    viewContexts.forEach((context) => {
+      const { projection, view } = context
+      xrPass(context, draw({ projection, view, model }))
+    })
+  } else {
+    camera.tick(delta)
+    canvasContexts.forEach((context) => {
+      const { canvas } = context
+      camera.view(view)
+      mat4.perspective(Math.PI / 4, canvas.width / canvas.height, 0.01, 100, projection)
+      canvasPass(context, draw({ projection, view, model }))
+    })
+  }
+}, regpu.hybridFrameSource)
 
 const button = document.querySelector<HTMLButtonElement>('#enter-xr')!
 const status = document.querySelector<HTMLElement>('#xr-status')!
